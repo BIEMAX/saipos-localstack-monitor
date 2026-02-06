@@ -7,8 +7,8 @@ const app = express();
 const PORT = 3006;
 const LOCALSTACK_URL = process.env.LOCALSTACK_URL || 'http://localhost:4566';
 
-// Middleware para parsear JSON
-app.use(express.json());
+// Middleware para parsear JSON (limite alto para upload S3 e payloads grandes)
+app.use(express.json({ limit: process.env.LOCALSTACK_MAX_UPLOAD_SIZE || '50mb' }));
 
 // Middleware para habilitar CORS
 app.use(cors({
@@ -427,7 +427,7 @@ app.delete('/api/s3/bucket/:bucket', async (req, res) => {
 
 app.put('/api/s3/object', async (req, res) => {
   try {
-    const { bucket, key, content, contentType } = req.body;
+    const { bucket, key, content, contentType, contentEncoding } = req.body;
 
     if (!bucket || !key) {
       return res.status(400).json({ error: 'bucket and key are required in request body' });
@@ -441,7 +441,11 @@ app.put('/api/s3/object', async (req, res) => {
     const filePath = path.join(tmpDir, `localstack-monitor-s3-upload-${Date.now()}.tmp`);
 
     try {
-      fs.writeFileSync(filePath, content || '', 'utf8');
+      if (contentEncoding === 'base64' && typeof content === 'string') {
+        fs.writeFileSync(filePath, Buffer.from(content, 'base64'));
+      } else {
+        fs.writeFileSync(filePath, content || '', 'utf8');
+      }
 
       const args = [
         's3api',
