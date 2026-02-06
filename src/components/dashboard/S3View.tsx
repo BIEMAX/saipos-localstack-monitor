@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Box, Database, Eye, FileText, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Box, Database, Eye, FileText, Plus, RefreshCw, Trash2, Upload } from 'lucide-react';
 import { S3Service } from '../../services/aws';
 import type { S3BucketInfo, S3ObjectContent, S3ObjectInfo } from '../../types';
 import { usePageRefresh } from '../../hooks/useGlobalRefresh';
@@ -13,6 +13,8 @@ interface ObjectEditorState {
   key: string;
   content: string;
   isJson: boolean;
+  /** When set, content is base64-encoded (for binary uploads). */
+  contentEncoding?: 'base64';
 }
 
 export function S3View() {
@@ -119,11 +121,17 @@ export function S3View() {
 
     try {
       setError(null);
+      const contentType = objectEditor.contentEncoding === 'base64'
+        ? 'application/octet-stream'
+        : objectEditor.isJson
+          ? 'application/json'
+          : 'text/plain';
       await S3Service.putObject(
         objectEditor.bucket,
         objectEditor.key,
         objectEditor.content,
-        objectEditor.isJson ? 'application/json' : 'text/plain',
+        contentType,
+        objectEditor.contentEncoding,
       );
       if (selectedBucket) {
         await loadObjects(selectedBucket);
@@ -132,6 +140,53 @@ export function S3View() {
       setError(err instanceof Error ? err.message : 'Falha ao salvar objeto S3');
     }
   }, [objectEditor, selectedBucket, loadObjects]);
+
+  const handleFileSelect = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file || !selectedBucket) return;
+
+      const key = file.name;
+      const isText = /\.(json|txt|log|md|xml|html|css|js|ts|tsx|jsx)$/i.test(file.name);
+      const reader = new FileReader();
+
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result === 'string') {
+          const isJson =
+            (result.trim().startsWith('{') && result.trim().endsWith('}')) ||
+            (result.trim().startsWith('[') && result.trim().endsWith(']'));
+          setObjectEditor({
+            bucket: selectedBucket.name,
+            key,
+            content: result,
+            isJson: isJson || /\.json$/i.test(file.name),
+            contentEncoding: undefined,
+          });
+        } else if (result instanceof ArrayBuffer) {
+          const base64 = btoa(
+            new Uint8Array(result).reduce((acc, byte) => acc + String.fromCharCode(byte), ''),
+          );
+          setObjectEditor({
+            bucket: selectedBucket.name,
+            key,
+            content: base64,
+            isJson: false,
+            contentEncoding: 'base64',
+          });
+        }
+      };
+
+      if (isText) {
+        reader.readAsText(file);
+      } else {
+        reader.readAsArrayBuffer(file);
+      }
+
+      event.target.value = '';
+    },
+    [selectedBucket],
+  );
 
   const handleConfirmDelete = useCallback(async () => {
     if (!deleteTarget) {
@@ -446,25 +501,38 @@ export function S3View() {
 
           {/* Object content / editor */}
           <div className="card p-6">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
               <h3 className="text-lg font-semibold text-gray-900">
                 Conteúdo do Objeto
               </h3>
               {selectedBucket && (
-                <button
-                  onClick={() =>
-                    setObjectEditor({
-                      bucket: selectedBucket.name,
-                      key: '',
-                      content: '',
-                      isJson: true,
-                    })
-                  }
-                  className="flex items-center space-x-2 px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 text-sm"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Novo Arquivo</span>
-                </button>
+                <div className="flex items-center space-x-2">
+                  <label className="flex items-center space-x-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 text-sm cursor-pointer">
+                    <Upload className="w-4 h-4" />
+                    <span>Selecionar arquivo</span>
+                    <input
+                      type="file"
+                      className="sr-only"
+                      onChange={handleFileSelect}
+                      aria-label="Selecionar arquivo para upload"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setObjectEditor({
+                        bucket: selectedBucket.name,
+                        key: '',
+                        content: '',
+                        isJson: true,
+                      })
+                    }
+                    className="flex items-center space-x-2 px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 text-sm"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Novo Arquivo</span>
+                  </button>
+                </div>
               )}
             </div>
 
@@ -520,7 +588,16 @@ export function S3View() {
                   )}
                 </div>
 
-                {objectEditor.isJson ? (
+                {objectEditor.contentEncoding === 'base64' ? (
+                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                    <p className="text-sm text-gray-700">
+                      Arquivo binário selecionado. Chave: <code className="font-mono">{objectEditor.key}</code>
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Clique em &quot;Salvar Arquivo&quot; para enviar ao bucket.
+                    </p>
+                  </div>
+                ) : objectEditor.isJson ? (
                   <JsonTextarea
                     value={objectEditor.content}
                     onChange={(value) =>

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Eye, EyeOff, KeyRound, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Copy, Eye, EyeOff, KeyRound, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import type { SecretDetail, SecretSummary, SecretTag } from '../../types';
 import { SecretsManagerService } from '../../services/aws';
 import { usePageRefresh } from '../../hooks/useGlobalRefresh';
 import { MetricCard } from '../shared/MetricCard';
 import { DeleteConfirmation } from '../shared/DeleteConfirmation';
+
+const STORAGE_KEY_SKIP_SHOW_SECRET_CONFIRM = 'secrets-manager-skip-show-confirm';
 
 interface SecretFormState {
   name: string;
@@ -191,11 +193,33 @@ export function SecretsManagerView() {
     }
   }, [deleteTarget, loadSecrets]);
 
-  const handleRequestShowValue = useCallback(() => {
+  const handleHideValue = useCallback((event: React.MouseEvent) => {
+    event.stopPropagation();
+    setShowSecretValue(false);
+  }, []);
+
+  const handleRequestShowValue = useCallback((event: React.MouseEvent) => {
+    event.stopPropagation();
+    setDeleteTarget(null);
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage.getItem(STORAGE_KEY_SKIP_SHOW_SECRET_CONFIRM) === 'true') {
+        setShowSecretValue(true);
+        return;
+      }
+    } catch {
+      // ignore localStorage errors
+    }
     setPendingShowValue(true);
   }, []);
 
-  const handleConfirmShowValue = useCallback(() => {
+  const handleConfirmShowValue = useCallback((dontAskAgain?: boolean) => {
+    if (dontAskAgain) {
+      try {
+        localStorage.setItem(STORAGE_KEY_SKIP_SHOW_SECRET_CONFIRM, 'true');
+      } catch {
+        // ignore
+      }
+    }
     setPendingShowValue(false);
     setShowSecretValue(true);
   }, []);
@@ -397,23 +421,38 @@ export function SecretsManagerView() {
                     Valor do segredo
                   </label>
                   {!isCreating && (
-                    <button
-                      type="button"
-                      onClick={handleRequestShowValue}
-                      className="flex items-center space-x-1 text-xs text-purple-600 hover:text-purple-800"
-                    >
-                      {showSecretValue ? (
-                        <>
-                          <EyeOff className="w-3 h-3" />
-                          <span>Ocultar valor</span>
-                        </>
-                      ) : (
-                        <>
-                          <Eye className="w-3 h-3" />
-                          <span>Mostrar valor</span>
-                        </>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        type="button"
+                        onClick={showSecretValue ? handleHideValue : handleRequestShowValue}
+                        className="flex items-center space-x-1 text-xs text-purple-600 hover:text-purple-800"
+                      >
+                        {showSecretValue ? (
+                          <>
+                            <EyeOff className="w-3 h-3" />
+                            <span>Ocultar valor</span>
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="w-3 h-3" />
+                            <span>Mostrar valor</span>
+                          </>
+                        )}
+                      </button>
+                      {showSecretValue && formState.secretString && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(formState.secretString);
+                          }}
+                          className="flex items-center space-x-1 text-xs text-gray-600 hover:text-gray-800"
+                          title="Copiar valor para a área de transferência"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>Copiar</span>
+                        </button>
                       )}
-                    </button>
+                    </div>
                   )}
                 </div>
 
@@ -455,9 +494,20 @@ export function SecretsManagerView() {
               )}
 
               {/* Actions */}
-              <div className="flex items-center justify-end space-x-2">
+              <div className="flex items-center justify-end space-x-2 flex-wrap gap-2">
+                {!isCreating && selectedSecret && (
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget(selectedSecret)}
+                    className="px-3 py-2 text-sm text-red-700 border border-red-300 rounded-lg hover:bg-red-50 flex items-center space-x-1"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Remover</span>
+                  </button>
+                )}
                 {!isCreating && (
                   <button
+                    type="button"
                     onClick={() => {
                       setSelectedSecret(null);
                       setShowSecretValue(false);
@@ -474,6 +524,7 @@ export function SecretsManagerView() {
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={handleSaveSecret}
                   disabled={isSaving || (isCreating && !formState.name.trim())}
                   className="px-3 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
@@ -504,11 +555,14 @@ export function SecretsManagerView() {
       {pendingShowValue && (
         <DeleteConfirmation
           isOpen={true}
-          onClose={() => {
-            setPendingShowValue(false);
-          }}
+          onClose={() => setPendingShowValue(false)}
           onConfirm={handleConfirmShowValue}
-          itemDescription="Confirmar exibição do valor do segredo. Evite mostrar em telas compartilhadas ou gravações."
+          variant="confirm"
+          confirmTitle="Exibir valor do segredo"
+          confirmSubtitle="Evite mostrar em telas compartilhadas ou gravações."
+          confirmLabel="Mostrar valor"
+          checkboxLabel="Não perguntar novamente"
+          itemDescription="Deseja exibir o valor do segredo na tela?"
         />
       )}
     </div>
