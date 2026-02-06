@@ -164,7 +164,7 @@ export function OverviewDashboard() {
           <div className="text-sm text-yellow-700">
             <p className="font-medium mb-1">Quick fixes:</p>
             <ul className="list-disc list-inside space-y-1">
-              <li>Ensure LocalStack is running: <code className="bg-yellow-100 px-1 rounded">curl http://localhost:4566/health</code></li>
+              <li>Ensure LocalStack is running: <code className="bg-yellow-100 px-1 rounded">curl http://localhost:4566/_localstack/health</code></li>
               <li>Start the analytics system: <code className="bg-yellow-100 px-1 rounded">npm start</code> in saipos-backend-template</li>
               <li>Check the "Logs" tab for connection testing</li>
             </ul>

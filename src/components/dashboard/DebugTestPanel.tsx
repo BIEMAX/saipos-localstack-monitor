@@ -266,7 +266,7 @@ export function DebugTestPanel() {
           <div className="mt-6 p-4 bg-blue-50 rounded-lg">
             <h4 className="font-medium text-blue-900 mb-2">Dicas de Solução:</h4>
             <ul className="text-sm text-blue-800 space-y-1">
-              <li>• Verificar se LocalStack está rodando: <code className="bg-blue-100 px-1 rounded">curl http://localhost:4566/health</code></li>
+              <li>• Verificar se LocalStack está rodando: <code className="bg-blue-100 px-1 rounded">curl http://localhost:4566/_localstack/health</code></li>
               <li>• Verificar se API Server está ativo: <code className="bg-blue-100 px-1 rounded">curl http://localhost:3006/health</code></li>
             </ul>
           </div>

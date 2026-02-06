@@ -314,3 +314,44 @@ export interface CloudWatchInsights {
   };
   status: 'Scheduled' | 'Running' | 'Complete' | 'Failed' | 'Cancelled';
 }
+
+// S3 types
+export interface S3BucketInfo {
+  name: string;
+  creationDate?: string;
+}
+
+export interface S3ObjectInfo {
+  key: string;
+  size: number;
+  lastModified?: string;
+  storageClass?: string;
+}
+
+export interface S3ObjectContent {
+  bucket: string;
+  key: string;
+  content: string;
+  contentType?: string;
+  size: number;
+  isTruncated: boolean;
+}
+
+// Secrets Manager types
+export interface SecretTag {
+  Key: string;
+  Value: string;
+}
+
+export interface SecretSummary {
+  arn: string;
+  name: string;
+  description?: string;
+  tags?: Record<string, string>;
+  lastChangedDate?: string;
+}
+
+export interface SecretDetail extends SecretSummary {
+  secretString?: string;
+  versionId?: string;
+}

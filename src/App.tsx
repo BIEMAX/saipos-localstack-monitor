@@ -5,6 +5,8 @@ import { DebugTestPanel } from './components/dashboard/DebugTestPanel';
 import { DynamoDBView } from './components/dashboard/DynamoDBView';
 import { LambdaLogsViewer } from './components/dashboard/LambdaLogsViewer';
 import { LambdaView } from './components/dashboard/LambdaView';
+import { S3View } from './components/dashboard/S3View';
+import { SecretsManagerView } from './components/dashboard/SecretsManagerView';
 import { SQSView } from './components/dashboard/SQSView';
 import { Header } from './components/layout/Header';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
@@ -19,6 +21,10 @@ function AppContent() {
     switch (activeTab) {
       case 'overview':
         return <BasicLocalStackDashboard onTabChange={setActiveTab} />;
+      case 'storage':
+        return <S3View />;
+      case 'secrets':
+        return <SecretsManagerView />;
       case 'tokens':
         return <DynamoDBView />;
       case 'queue':

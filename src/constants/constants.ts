@@ -5,7 +5,7 @@ export const API_BASE_URL = 'http://localhost:3006/api';
 export const LOCALSTACK_URL = 'http://localhost:4566';
 export const HEALTH_CHECK_URL = 'http://localhost:3006/health';
 export const TEST_LOCALSTACK_URL = 'http://localhost:3006/test-localstack';
-export const LOCALSTACK_HEALTH_URL = 'http://localhost:4566/health';
+export const LOCALSTACK_HEALTH_URL = 'http://localhost:4566/_localstack/health';
 
 // Refresh intervals
 export const DEFAULT_REFRESH_INTERVAL = 10000; // 10 seconds

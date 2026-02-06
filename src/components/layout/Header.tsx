@@ -1,4 +1,4 @@
-import { Bug, Database, Eye, FileText, MessageSquare, Zap } from 'lucide-react';
+import { Bug, Database, Eye, FileText, KeyRound, MessageSquare, Zap, Box } from 'lucide-react';
 import saiposLogo from '../../assets/logo.png';
 import { GlobalRefreshControl } from '../shared/GlobalRefreshControl';
 
@@ -10,6 +10,8 @@ interface HeaderProps {
 export function Header({ activeTab, onTabChange }: HeaderProps) {
   const tabs = [
     { id: 'overview', name: 'Visão Geral', icon: Eye },
+    { id: 'storage', name: 'S3', icon: Box },
+    { id: 'secrets', name: 'Secrets Manager', icon: KeyRound },
     { id: 'tokens', name: 'DynamoDB', icon: Database },
     { id: 'queue', name: 'SQS', icon: MessageSquare },
     { id: 'lambda', name: 'Lambda', icon: Zap },

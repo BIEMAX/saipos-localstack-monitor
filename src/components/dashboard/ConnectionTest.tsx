@@ -143,7 +143,7 @@ export function ConnectionTest() {
       <div className="mt-6 p-4 bg-blue-50 rounded-lg">
         <h3 className="font-medium text-blue-900 mb-2">Troubleshooting Tips:</h3>
         <ul className="text-sm text-blue-800 space-y-1">
-          <li>• Ensure LocalStack is running: <code className="bg-blue-100 px-1 rounded">curl http://localhost:4566/health</code></li>
+          <li>• Ensure LocalStack is running: <code className="bg-blue-100 px-1 rounded">curl http://localhost:4566/_localstack/health</code></li>
           <li>• Check if analytics system is active: <code className="bg-blue-100 px-1 rounded">npm start</code> in saipos-backend-template</li>
           <li>• If connections fail, the dashboard will use mock data for demonstration</li>
         </ul>
