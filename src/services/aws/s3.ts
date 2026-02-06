@@ -132,19 +132,24 @@ import type {
       key: string,
       content: string,
       contentType?: string,
+      contentEncoding?: 'base64',
     ): Promise<void> {
       try {
+        const body: Record<string, string | undefined> = {
+          bucket,
+          key,
+          content,
+          contentType,
+        };
+        if (contentEncoding) {
+          body.contentEncoding = contentEncoding;
+        }
         await this.makeRequest(`${this.SERVICE_PATH}/object`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            bucket,
-            key,
-            content,
-            contentType,
-          }),
+          body: JSON.stringify(body),
         });
       } catch (error) {
         this.handleServiceError(error, 'S3');
