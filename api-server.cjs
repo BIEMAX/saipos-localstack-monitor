@@ -5,7 +5,7 @@ const { spawn } = require('child_process');
 
 const app = express();
 const PORT = 3006;
-const LOCALSTACK_URL = 'http://localhost:4566';
+const LOCALSTACK_URL = process.env.LOCALSTACK_URL || 'http://localhost:4566';
 
 // Middleware para parsear JSON
 app.use(express.json());
@@ -66,7 +66,7 @@ app.get('/test-localstack', async (req, res) => {
 function executeAwsCommand(args) {
   return new Promise((resolve, reject) => {
     const awsArgs = [
-      '--profile', 'localstack',
+      // '--profile', 'localstack',
       '--endpoint-url', LOCALSTACK_URL,
       ...args
     ];
@@ -271,6 +271,414 @@ app.put('/api/dynamodb/table/:tableName/item', async (req, res) => {
     res.status(500).json({
       error: error.message,
       details: 'Failed to update item in DynamoDB table'
+    });
+  }
+});
+
+// S3 endpoints
+app.get('/api/s3/buckets', async (req, res) => {
+  try {
+    const result = await executeAwsCommand(['s3api', 'list-buckets']);
+    res.json(result);
+  } catch (error) {
+    console.error('Error listing S3 buckets:', error);
+    res.status(500).json({ error: error.message, details: 'Failed to list S3 buckets' });
+  }
+});
+
+app.get('/api/s3/bucket/:bucket/objects', async (req, res) => {
+  try {
+    const { bucket } = req.params;
+    const { prefix, maxKeys } = req.query;
+
+    const args = ['s3api', 'list-objects-v2', '--bucket', bucket];
+
+    if (prefix) {
+      args.push('--prefix', String(prefix));
+    }
+
+    if (maxKeys) {
+      args.push('--max-keys', String(maxKeys));
+    }
+
+    const result = await executeAwsCommand(args);
+    res.json(result);
+  } catch (error) {
+    console.error('Error listing S3 objects:', error);
+    res.status(500).json({ error: error.message, details: 'Failed to list S3 objects' });
+  }
+});
+
+app.get('/api/s3/object', async (req, res) => {
+  try {
+    const { bucket, key } = req.query;
+
+    if (!bucket || !key) {
+      return res.status(400).json({ error: 'bucket and key are required query parameters' });
+    }
+
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+
+    const tmpDir = os.tmpdir();
+    const filePath = path.join(tmpDir, `localstack-monitor-s3-${Date.now()}.tmp`);
+
+    try {
+      await executeAwsCommand([
+        's3api',
+        'get-object',
+        '--bucket',
+        String(bucket),
+        '--key',
+        String(key),
+        filePath,
+      ]);
+
+      const stats = fs.statSync(filePath);
+      const maxPreviewSize = 64 * 1024; // 64KB preview
+      const isTruncated = stats.size > maxPreviewSize;
+
+      const contentBuffer = fs.readFileSync(filePath, 'utf8');
+
+      const previewContent = isTruncated
+        ? contentBuffer.slice(0, maxPreviewSize)
+        : contentBuffer;
+
+      res.json({
+        bucket,
+        key,
+        size: stats.size,
+        content: previewContent,
+        isTruncated,
+      });
+    } finally {
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (cleanupError) {
+        console.warn('Failed to cleanup temporary S3 object file:', cleanupError);
+      }
+    }
+  } catch (error) {
+    console.error('Error getting S3 object:', error);
+    res.status(500).json({ error: error.message, details: 'Failed to get S3 object' });
+  }
+});
+
+app.post('/api/s3/bucket', async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'Bucket name is required' });
+    }
+
+    const result = await executeAwsCommand([
+      's3api',
+      'create-bucket',
+      '--bucket',
+      String(name),
+    ]);
+
+    res.json({
+      success: true,
+      message: `Bucket ${name} created successfully`,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Error creating S3 bucket:', error);
+    res.status(500).json({
+      error: error.message,
+      details: 'Failed to create S3 bucket',
+    });
+  }
+});
+
+app.delete('/api/s3/bucket/:bucket', async (req, res) => {
+  try {
+    const { bucket } = req.params;
+
+    if (!bucket) {
+      return res.status(400).json({ error: 'Bucket name is required' });
+    }
+
+    const result = await executeAwsCommand([
+      's3api',
+      'delete-bucket',
+      '--bucket',
+      String(bucket),
+    ]);
+
+    res.json({
+      success: true,
+      message: `Bucket ${bucket} deleted successfully`,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Error deleting S3 bucket:', error);
+    res.status(500).json({
+      error: error.message,
+      details: 'Failed to delete S3 bucket',
+    });
+  }
+});
+
+app.put('/api/s3/object', async (req, res) => {
+  try {
+    const { bucket, key, content, contentType } = req.body;
+
+    if (!bucket || !key) {
+      return res.status(400).json({ error: 'bucket and key are required in request body' });
+    }
+
+    const fs = require('fs');
+    const os = require('os');
+    const path = require('path');
+
+    const tmpDir = os.tmpdir();
+    const filePath = path.join(tmpDir, `localstack-monitor-s3-upload-${Date.now()}.tmp`);
+
+    try {
+      fs.writeFileSync(filePath, content || '', 'utf8');
+
+      const args = [
+        's3api',
+        'put-object',
+        '--bucket',
+        String(bucket),
+        '--key',
+        String(key),
+        '--body',
+        filePath,
+      ];
+
+      if (contentType) {
+        args.push('--content-type', String(contentType));
+      }
+
+      const result = await executeAwsCommand(args);
+
+      res.json({
+        success: true,
+        message: `Object ${key} saved successfully in bucket ${bucket}`,
+        ...result,
+      });
+    } finally {
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (cleanupError) {
+        console.warn('Failed to cleanup temporary S3 upload file:', cleanupError);
+      }
+    }
+  } catch (error) {
+    console.error('Error putting S3 object:', error);
+    res.status(500).json({
+      error: error.message,
+      details: 'Failed to create or update S3 object',
+    });
+  }
+});
+
+app.delete('/api/s3/object', async (req, res) => {
+  try {
+    const { bucket, key } = req.body;
+
+    if (!bucket || !key) {
+      return res.status(400).json({ error: 'bucket and key are required in request body' });
+    }
+
+    const result = await executeAwsCommand([
+      's3api',
+      'delete-object',
+      '--bucket',
+      String(bucket),
+      '--key',
+      String(key),
+    ]);
+
+    res.json({
+      success: true,
+      message: `Object ${key} deleted successfully from bucket ${bucket}`,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Error deleting S3 object:', error);
+    res.status(500).json({
+      error: error.message,
+      details: 'Failed to delete S3 object',
+    });
+  }
+});
+
+// Secrets Manager endpoints
+app.get('/api/secrets', async (req, res) => {
+  try {
+    const result = await executeAwsCommand(['secretsmanager', 'list-secrets']);
+    res.json(result);
+  } catch (error) {
+    console.error('Error listing secrets:', error);
+    res.status(500).json({ error: error.message, details: 'Failed to list secrets' });
+  }
+});
+
+app.get('/api/secrets/:secretId', async (req, res) => {
+  try {
+    const { secretId } = req.params;
+
+    if (!secretId) {
+      return res.status(400).json({ error: 'secretId is required' });
+    }
+
+    const describeResult = await executeAwsCommand([
+      'secretsmanager',
+      'describe-secret',
+      '--secret-id',
+      secretId,
+    ]);
+
+    let valueResult = null;
+    try {
+      valueResult = await executeAwsCommand([
+        'secretsmanager',
+        'get-secret-value',
+        '--secret-id',
+        secretId,
+      ]);
+    } catch (valueError) {
+      console.warn(`Failed to get secret value for ${secretId}:`, valueError.message);
+    }
+
+    res.json({
+      ...describeResult,
+      secretValue: valueResult || null,
+    });
+  } catch (error) {
+    console.error('Error getting secret:', error);
+    res.status(500).json({ error: error.message, details: 'Failed to get secret' });
+  }
+});
+
+app.post('/api/secrets', async (req, res) => {
+  try {
+    const { name, description, tags, secretString } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+
+    const args = [
+      'secretsmanager',
+      'create-secret',
+      '--name',
+      String(name),
+    ];
+
+    if (description) {
+      args.push('--description', String(description));
+    }
+
+    if (secretString) {
+      args.push('--secret-string', String(secretString));
+    }
+
+    if (tags && Array.isArray(tags)) {
+      args.push('--tags', JSON.stringify(tags));
+    }
+
+    const result = await executeAwsCommand(args);
+
+    res.json({
+      success: true,
+      message: `Secret ${name} created successfully`,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Error creating secret:', error);
+    res.status(500).json({
+      error: error.message,
+      details: 'Failed to create secret',
+    });
+  }
+});
+
+app.put('/api/secrets/:secretId', async (req, res) => {
+  try {
+    const { secretId } = req.params;
+    const { description, secretString } = req.body;
+
+    if (!secretId) {
+      return res.status(400).json({ error: 'secretId is required' });
+    }
+
+    let updateResult = null;
+    if (description) {
+      updateResult = await executeAwsCommand([
+        'secretsmanager',
+        'update-secret',
+        '--secret-id',
+        secretId,
+        '--description',
+        String(description),
+      ]);
+    }
+
+    let valueResult = null;
+    if (typeof secretString === 'string') {
+      valueResult = await executeAwsCommand([
+        'secretsmanager',
+        'put-secret-value',
+        '--secret-id',
+        secretId,
+        '--secret-string',
+        String(secretString),
+      ]);
+    }
+
+    res.json({
+      success: true,
+      message: `Secret ${secretId} updated successfully`,
+      updateResult,
+      valueResult,
+    });
+  } catch (error) {
+    console.error('Error updating secret:', error);
+    res.status(500).json({
+      error: error.message,
+      details: 'Failed to update secret',
+    });
+  }
+});
+
+app.delete('/api/secrets/:secretId', async (req, res) => {
+  try {
+    const { secretId } = req.params;
+
+    if (!secretId) {
+      return res.status(400).json({ error: 'secretId is required' });
+    }
+
+    const result = await executeAwsCommand([
+      'secretsmanager',
+      'delete-secret',
+      '--secret-id',
+      secretId,
+      '--force-delete-without-recovery',
+    ]);
+
+    res.json({
+      success: true,
+      message: `Secret ${secretId} deleted successfully`,
+      ...result,
+    });
+  } catch (error) {
+    console.error('Error deleting secret:', error);
+    res.status(500).json({
+      error: error.message,
+      details: 'Failed to delete secret',
     });
   }
 });
@@ -980,10 +1388,10 @@ app.options('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Analytics Dashboard API Server running on http://localhost:${PORT}`);
-  console.log(`📡 Proxying LocalStack requests to ${LOCALSTACK_URL}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-  console.log(`🧪 Test LocalStack: http://localhost:${PORT}/test-localstack`);
+  console.log(`� Analytics Dashboard API Server running on http://localhost:${PORT}`);
+  console.log(`� Proxying LocalStack requests to ${LOCALSTACK_URL}`);
+  console.log(`� Health check: http://localhost:${PORT}/health`);
+  console.log(`� Test LocalStack: http://localhost:${PORT}/test-localstack`);
 });
 
 module.exports = app;
