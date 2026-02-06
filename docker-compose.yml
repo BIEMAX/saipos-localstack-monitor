@@ -1,0 +1,31 @@
+# Suporta qualquer rede externa via DOCKER_NETWORK
+# Uso: DOCKER_NETWORK=minha_rede docker compose up -d
+# Ou defina no .env: DOCKER_NETWORK=minha_rede
+# A rede deve existir: docker network create minha_rede
+
+name: saipos-localstack-monitor
+
+services:
+  saipos-localstack-monitor:
+    container_name: saipos-localstack-monitor
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3005:3005"
+      - "3006:3006"
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    networks:
+      - app_network
+    environment:
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+      - LOCALSTACK_URL=${LOCALSTACK_URL:-http://aws-localstack:4566}
+
+networks:
+  app_network:
+    name: app_network
+    external: true

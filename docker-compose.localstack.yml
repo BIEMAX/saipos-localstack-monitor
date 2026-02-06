@@ -1,0 +1,26 @@
+# Projeto separado - apenas LocalStack, sem o monitor
+name: localstack
+
+services:
+  aws-localstack:
+    container_name: aws-localstack
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      # - SERVICES=s3,sqs,dynamodb,lambda,cloudwatch
+      - DATA_DIR=/var/lib/localstack
+      - PORT=4566
+      # Equivalente a: aws configure set aws_access_key_id foo, etc.
+      - AWS_ACCESS_KEY_ID=foo
+      - AWS_SECRET_ACCESS_KEY=bar
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - ./localstack-data:/var/lib/localstack
+    networks:
+      - app_network
+
+networks:
+  app_network:
+    name: app_network
+    external: true
