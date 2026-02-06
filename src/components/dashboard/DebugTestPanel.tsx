@@ -1,6 +1,7 @@
 import { AlertCircle, Bug, CheckCircle, Eye, Play, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { LocalStackApiService } from '../../services/localstack-api';
+import { S3Service, SecretsManagerService } from '../../services/aws';
 import { HEALTH_CHECK_URL, TEST_LOCALSTACK_URL } from '../../constants';
 import type { DebugResult, TestResults } from '../../types';
 
@@ -11,16 +12,22 @@ export function DebugTestPanel() {
     dynamodb: null,
     sqs: null,
     logs: null,
+    s3: null,
+    secretsManager: null,
   });
 
   const [details, setDetails] = useState<{
     tables: string[];
     queues: string[];
     tokens: number;
+    buckets: string[];
+    secretsCount: number;
   }>({
     tables: [],
     queues: [],
     tokens: 0,
+    buckets: [],
+    secretsCount: 0,
   });
 
   const [debugTesting, setDebugTesting] = useState(false);
@@ -124,14 +131,65 @@ export function DebugTestPanel() {
       });
     }
 
+    // Test 6: S3 Service
+    try {
+      const buckets = await S3Service.listBuckets();
+      results.push({
+        test: 'S3 Service',
+        status: 'SUCCESS',
+        details: {
+          totalBuckets: buckets.length,
+          buckets: buckets.map(b => b.name)
+        }
+      });
+    } catch (error) {
+      results.push({
+        test: 'S3 Service',
+        status: 'ERROR',
+        details: error as Record<string, unknown>
+      });
+    }
+
+    // Test 7: Secrets Manager Service
+    try {
+      const secrets = await SecretsManagerService.listSecrets();
+      const list = secrets ?? [];
+      results.push({
+        test: 'Secrets Manager Service',
+        status: 'SUCCESS',
+        details: {
+          totalSecrets: list.length,
+          secretNames: list.map(s => s.name)
+        }
+      });
+    } catch (error) {
+      results.push({
+        test: 'Secrets Manager Service',
+        status: 'ERROR',
+        details: error as Record<string, unknown>
+      });
+    }
+
     setDebugResults(results);
     setDebugTesting(false);
   };
 
   const testConnections = async () => {
     setConnectionTesting(true);
-    const results = { dynamodb: false, sqs: false, logs: false };
-    const newDetails: { tables: string[]; queues: string[]; tokens: number } = { tables: [], queues: [], tokens: 0 };
+    const results: TestResults = {
+      dynamodb: false,
+      sqs: false,
+      logs: false,
+      s3: false,
+      secretsManager: false,
+    };
+    const newDetails = {
+      tables: [] as string[],
+      queues: [] as string[],
+      tokens: 0,
+      buckets: [] as string[],
+      secretsCount: 0,
+    };
 
     try {
       // Test DynamoDB
@@ -163,11 +221,33 @@ export function DebugTestPanel() {
         console.error('CloudWatch Logs test failed:', error);
         results.logs = false;
       }
+
+      // Test S3
+      try {
+        const buckets = await S3Service.listBuckets();
+        results.s3 = true;
+        newDetails.buckets = buckets.map(b => b.name);
+      } catch (error) {
+        console.error('S3 test failed:', error);
+        results.s3 = false;
+      }
+
+      // Test Secrets Manager
+      try {
+        const secrets = await SecretsManagerService.listSecrets();
+        results.secretsManager = true;
+        newDetails.secretsCount = secrets?.length ?? 0;
+      } catch (error) {
+        console.error('Secrets Manager test failed:', error);
+        results.secretsManager = false;
+      }
     } catch (error) {
       console.error('Connection test failed:', error);
       results.dynamodb = false;
       results.sqs = false;
       results.logs = false;
+      results.s3 = false;
+      results.secretsManager = false;
     }
 
     setTestResults(results);
@@ -259,6 +339,36 @@ export function DebugTestPanel() {
                 <span className="font-medium">CloudWatch Logs</span>
               </div>
               <span className="text-sm text-gray-600">{getStatusText(testResults.logs)}</span>
+            </div>
+
+            <div className="p-3 rounded-lg bg-gray-50">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center space-x-3">
+                  {getStatusIcon(testResults.s3 ?? null)}
+                  <span className="font-medium">S3</span>
+                </div>
+                <span className="text-sm text-gray-600">{getStatusText(testResults.s3 ?? null)}</span>
+              </div>
+              {details.buckets.length > 0 && (
+                <div className="text-xs text-gray-500">
+                  Buckets: {details.buckets.join(', ')}
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 rounded-lg bg-gray-50">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center space-x-3">
+                  {getStatusIcon(testResults.secretsManager ?? null)}
+                  <span className="font-medium">Secrets Manager</span>
+                </div>
+                <span className="text-sm text-gray-600">{getStatusText(testResults.secretsManager ?? null)}</span>
+              </div>
+              {details.secretsCount > 0 && (
+                <div className="text-xs text-gray-500">
+                  Segredos: {details.secretsCount}
+                </div>
+              )}
             </div>
           </div>
 

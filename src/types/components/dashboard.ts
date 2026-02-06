@@ -98,6 +98,8 @@ export interface TestResults {
   sqs: boolean | null;
   lambda?: boolean | null;
   logs: boolean | null;
+  s3?: boolean | null;
+  secretsManager?: boolean | null;
 }
 
 export interface BasicLocalStackDashboardProps extends BaseComponentProps {

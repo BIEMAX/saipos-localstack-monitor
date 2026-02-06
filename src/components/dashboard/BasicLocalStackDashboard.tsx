@@ -1,7 +1,8 @@
-import { Activity, AlertCircle, Database, Eye, FileText, MessageSquare, RefreshCw, Zap } from 'lucide-react';
+import { Activity, AlertCircle, Box, Database, Eye, FileText, KeyRound, MessageSquare, RefreshCw, Zap } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useGlobalRefresh, usePageRefresh } from '../../hooks/useGlobalRefresh';
 import { LocalStackApiService } from '../../services/localstack-api';
+import { S3Service, SecretsManagerService } from '../../services/aws';
 import type { LogEvent, ServiceStats } from '../../types';
 import { formatBytes, formatTimestamp } from '../../utils';
 import { MetricCard } from '../shared/MetricCard';
@@ -30,21 +31,27 @@ export function BasicLocalStackDashboard({ onTabChange }: BasicLocalStackDashboa
     dynamodb: false,
     sqs: false,
     lambda: false,
-    logs: false
+    logs: false,
+    s3: false,
+    secretsManager: false,
   });
+  const [s3BucketsCount, setS3BucketsCount] = useState(0);
+  const [secretsCount, setSecretsCount] = useState(0);
   const [localstackStatus, setLocalstackStatus] = useState<'checking' | 'offline' | 'online' | 'empty'>('checking');
 
   const checkServiceAvailability = useCallback(async () => {
-    const [dynamodb, sqs, lambda, logs] = await Promise.all([
+    const [dynamodb, sqs, lambda, logs, s3, secretsManager] = await Promise.all([
       LocalStackApiService.isDynamoDBAvailable(),
       LocalStackApiService.isSQSAvailable(),
       LocalStackApiService.isLambdaAvailable(),
-      LocalStackApiService.isCloudWatchLogsAvailable()
+      LocalStackApiService.isCloudWatchLogsAvailable(),
+      S3Service.isAvailable(),
+      SecretsManagerService.isAvailable(),
     ]);
 
-    setServiceAvailability({ dynamodb, sqs, lambda, logs });
+    setServiceAvailability({ dynamodb, sqs, lambda, logs, s3, secretsManager });
 
-    const availableServices = [dynamodb, sqs, lambda, logs].filter(Boolean).length;
+    const availableServices = [dynamodb, sqs, lambda, logs, s3, secretsManager].filter(Boolean).length;
 
     if (availableServices === 0) {
       setLocalstackStatus('offline');
@@ -52,20 +59,28 @@ export function BasicLocalStackDashboard({ onTabChange }: BasicLocalStackDashboa
       setLocalstackStatus('online');
     }
 
-    return { dynamodb, sqs, lambda, logs };
+    return { dynamodb, sqs, lambda, logs, s3, secretsManager };
   }, []);
 
   const loadStats = useCallback(async () => {
     try {
       setError(null);
       const availability = await checkServiceAvailability();
-      const serviceStats = await LocalStackApiService.getServiceStats();
+      const [serviceStats, buckets, secrets] = await Promise.all([
+        LocalStackApiService.getServiceStats(),
+        availability.s3 ? S3Service.listBuckets() : Promise.resolve([]),
+        availability.secretsManager ? SecretsManagerService.listSecrets() : Promise.resolve([]),
+      ]);
       setStats(serviceStats);
+      setS3BucketsCount(buckets?.length ?? 0);
+      setSecretsCount(secrets?.length ?? 0);
 
       const hasAnyData = serviceStats.dynamodb.totalTables > 0 ||
                         serviceStats.sqs.totalQueues > 0 ||
                         serviceStats.lambda.totalFunctions > 0 ||
-                        serviceStats.logs.totalGroups > 0;
+                        serviceStats.logs.totalGroups > 0 ||
+                        (buckets?.length ?? 0) > 0 ||
+                        (secrets?.length ?? 0) > 0;
 
       if (Object.values(availability).some(Boolean) && !hasAnyData) {
         setLocalstackStatus('empty');
@@ -218,7 +233,7 @@ export function BasicLocalStackDashboard({ onTabChange }: BasicLocalStackDashboa
       )}
 
       {/* Service Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <MetricCard
           title="DynamoDB Tables"
           value={serviceAvailability.dynamodb ? stats.dynamodb.totalTables : "N/A"}
@@ -235,6 +250,24 @@ export function BasicLocalStackDashboard({ onTabChange }: BasicLocalStackDashboa
           icon={MessageSquare}
           color={serviceAvailability.sqs ? "green" : "gray"}
           onClick={serviceAvailability.sqs ? () => onTabChange?.('queue') : undefined}
+        />
+
+        <MetricCard
+          title="S3 Buckets"
+          value={serviceAvailability.s3 ? s3BucketsCount : "N/A"}
+          subtitle={serviceAvailability.s3 ? "buckets" : "Serviço indisponível"}
+          icon={Box}
+          color={serviceAvailability.s3 ? "blue" : "gray"}
+          onClick={serviceAvailability.s3 ? () => onTabChange?.('storage') : undefined}
+        />
+
+        <MetricCard
+          title="Secrets Manager"
+          value={serviceAvailability.secretsManager ? secretsCount : "N/A"}
+          subtitle={serviceAvailability.secretsManager ? "segredos" : "Serviço indisponível"}
+          icon={KeyRound}
+          color={serviceAvailability.secretsManager ? "purple" : "gray"}
+          onClick={serviceAvailability.secretsManager ? () => onTabChange?.('secrets') : undefined}
         />
 
         <MetricCard
